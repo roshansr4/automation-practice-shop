@@ -9,9 +9,14 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "multer": "^2.0.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.7.0"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }
