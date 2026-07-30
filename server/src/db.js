@@ -2,16 +2,73 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
 import { buildProducts, COUPONS, REVIEW_SEEDS } from './catalog.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(here, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
+const dbPath = path.join(dataDir, 'app.db');
 
-export const db = new Database(path.join(dataDir, 'app.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/* --------------------------------------------------------------- the driver */
+
+// Node 22.5 and later ship SQLite in core as node:sqlite, which means no
+// compiler and no native module on a fresh machine. If that is missing we fall
+// back to better-sqlite3, which is listed as an optional dependency so a failed
+// build never breaks `npm install`.
+
+let raw;
+let driver;
+
+try {
+  const { DatabaseSync } = await import('node:sqlite');
+  raw = new DatabaseSync(dbPath);
+  driver = 'node:sqlite';
+} catch (nodeSqliteError) {
+  try {
+    const { default: BetterSqlite3 } = await import('better-sqlite3');
+    raw = new BetterSqlite3(dbPath);
+    driver = 'better-sqlite3';
+  } catch (betterSqliteError) {
+    throw new Error(
+      [
+        'No SQLite driver is available.',
+        'Either run this on Node 22.5 or newer (which has node:sqlite built in),',
+        'or install better-sqlite3, which needs a C++ toolchain on Windows.',
+        `node:sqlite said: ${nodeSqliteError.message}`,
+        `better-sqlite3 said: ${betterSqliteError.message}`
+      ].join(' ')
+    );
+  }
+}
+
+console.log(`Database driver: ${driver}`);
+
+// Both drivers expose prepare/exec with the same shape, but only better-sqlite3
+// has a transaction helper, so we roll our own on top of plain SQL.
+export const db = {
+  driver,
+  raw,
+  prepare: (sql) => raw.prepare(sql),
+  exec: (sql) => raw.exec(sql),
+  transaction(fn) {
+    return (...args) => {
+      raw.exec('BEGIN');
+      try {
+        const result = fn(...args);
+        raw.exec('COMMIT');
+        return result;
+      } catch (error) {
+        raw.exec('ROLLBACK');
+        throw error;
+      }
+    };
+  }
+};
+
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
+
+/* ------------------------------------------------------------------ hashing */
 
 export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const derived = crypto.scryptSync(password, salt, 32).toString('hex');
@@ -26,6 +83,8 @@ export function verifyPassword(password, stored) {
   if (candidate.length !== expected.length) return false;
   return crypto.timingSafeEqual(candidate, expected);
 }
+
+/* ------------------------------------------------------------------- schema */
 
 function createSchema() {
   db.exec(`
@@ -139,6 +198,8 @@ function createSchema() {
   `);
 }
 
+/* -------------------------------------------------------------------- seed */
+
 function seed() {
   const productCount = db.prepare('SELECT COUNT(*) AS count FROM products').get().count;
   if (productCount > 0) return;
@@ -167,6 +228,7 @@ function seed() {
     products.forEach((product, index) => {
       insertProduct.run({
         ...product,
+        listPrice: product.listPrice === null ? null : product.listPrice,
         specs: JSON.stringify(product.specs),
         tags: JSON.stringify(product.tags),
         featuredOrder: index < 6 ? index + 1 : null
