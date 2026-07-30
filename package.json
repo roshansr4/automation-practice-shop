@@ -1,0 +1,23 @@
+{
+  "name": "automation-practice-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A realistic full-stack ecommerce site built as a practice target for Selenium and Playwright. No test ids anywhere - production-style locators only.",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm --workspace server run dev\" \"npm --workspace client run dev\"",
+    "build": "npm --workspace client run build",
+    "start": "npm --workspace server run start",
+    "preview": "npm --workspace client run preview"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
