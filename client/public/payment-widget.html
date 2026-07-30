@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure card payment</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 18px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #f6f7f9;
+        color: #1c2430;
+      }
+      h1 { font-size: 1rem; margin: 0 0 4px; }
+      p.lead { margin: 0 0 16px; font-size: 0.82rem; color: #5b6675; }
+      label { display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; }
+      input {
+        width: 100%; box-sizing: border-box; padding: 9px 10px; margin-bottom: 12px;
+        border: 1px solid #c3cbd6; border-radius: 6px; font-size: 0.92rem; background: #fff;
+      }
+      input:focus { outline: 2px solid #2f6f4e; outline-offset: 1px; }
+      .row { display: flex; gap: 12px; }
+      .row > div { flex: 1; }
+      button {
+        width: 100%; padding: 11px; border: 0; border-radius: 6px; background: #1f4d38;
+        color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+      }
+      button:disabled { background: #97a4b1; cursor: not-allowed; }
+      .error { color: #a5271f; font-size: 0.76rem; margin: -8px 0 10px; }
+      .done { background: #e6f3ec; border: 1px solid #b6d9c5; padding: 12px; border-radius: 6px; font-size: 0.88rem; }
+      .badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #5b6675; }
+    </style>
+  </head>
+  <body>
+    <span class="badge">Northwind Payments</span>
+    <h1>Card details</h1>
+    <p class="lead">Test card: 4111 1111 1111 1111, any future expiry, any 3 digit code.</p>
+
+    <form id="card-form" novalidate>
+      <label for="card-name">Name on card</label>
+      <input id="card-name" name="cardName" autocomplete="cc-name" placeholder="A. Shopper" />
+      <p class="error" id="error-name" hidden></p>
+
+      <label for="card-number">Card number</label>
+      <input id="card-number" name="cardNumber" inputmode="numeric" autocomplete="cc-number" placeholder="4111 1111 1111 1111" />
+      <p class="error" id="error-number" hidden></p>
+
+      <div class="row">
+        <div>
+          <label for="card-expiry">Expiry (MM/YY)</label>
+          <input id="card-expiry" name="cardExpiry" autocomplete="cc-exp" placeholder="09/29" />
+          <p class="error" id="error-expiry" hidden></p>
+        </div>
+        <div>
+          <label for="card-cvc">Security code</label>
+          <input id="card-cvc" name="cardCvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" />
+          <p class="error" id="error-cvc" hidden></p>
+        </div>
+      </div>
+
+      <button type="submit" id="save-card">Save card</button>
+    </form>
+
+    <div class="done" id="confirmation" hidden></div>
+
+    <script>
+      const form = document.getElementById('card-form');
+      const confirmation = document.getElementById('confirmation');
+
+      function showError(id, message) {
+        const node = document.getElementById(id);
+        node.textContent = message;
+        node.hidden = !message;
+        return !message;
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        const name = document.getElementById('card-name').value.trim();
+        const number = document.getElementById('card-number').value.replace(/\s+/g, '');
+        const expiry = document.getElementById('card-expiry').value.trim();
+        const cvc = document.getElementById('card-cvc').value.trim();
+
+        let valid = true;
+        valid = showError('error-name', name ? '' : 'Enter the name printed on the card.') && valid;
+        valid = showError('error-number', /^\d{16}$/.test(number) ? '' : 'Card numbers are 16 digits.') && valid;
+        valid = showError('error-expiry', /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry) ? '' : 'Use MM/YY.') && valid;
+        valid = showError('error-cvc', /^\d{3,4}$/.test(cvc) ? '' : 'Three or four digits.') && valid;
+        if (!valid) return;
+
+        const button = document.getElementById('save-card');
+        button.disabled = true;
+        button.textContent = 'Contacting bank…';
+
+        // A deliberate pause so the parent page has to wait for the frame.
+        setTimeout(function () {
+          const payload = { last4: number.slice(-4), expiry: expiry, name: name };
+          window.parent.postMessage({ source: 'northwind-payment-widget', payload: payload }, '*');
+
+          form.hidden = true;
+          confirmation.hidden = false;
+          confirmation.textContent = 'Card ending ' + payload.last4 + ' saved for this order.';
+        }, 1400);
+      });
+    </script>
+  </body>
+</html>
